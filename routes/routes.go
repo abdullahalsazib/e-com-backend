@@ -83,14 +83,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		}
 
 	}
-	cart := authGroup.Group("/cart")
-	{
-		cart.GET("/", cartController.GetCart)
-		cart.POST("/items", cartController.AddToCart)
-		cart.PUT("/items/:itemId", cartController.UpdateCartItem)
-		cart.DELETE("/items/:itemId", cartController.RemoveFromCart)
-		cart.DELETE("/clear", cartController.ClearCart)
-	}
+
 	order := authGroup.Group("/orders")
 	{
 		order.POST("/", orderController.CreateOrder)
@@ -116,6 +109,16 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		wishlistGroup.PUT("/update/:id", wishlistController.UpdateWishlistItem)
 		wishlistGroup.POST("/import", wishlistController.ImportWishlist)
 
+	}
+
+	cartGroup := authGroup.Group("/cart")
+	{
+		cartGroup.Use(middlewares.AuthMiddleware(db))
+		cartGroup.GET("/", cartController.GetCart)
+		cartGroup.POST("/items", cartController.AddToCart)
+		cartGroup.PUT("/items/:itemId", cartController.UpdateCartItem)
+		cartGroup.DELETE("/items/:itemId", cartController.RemoveFromCart)
+		cartGroup.DELETE("/clear", cartController.ClearCart)
 	}
 
 	return r

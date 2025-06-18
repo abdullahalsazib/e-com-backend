@@ -25,15 +25,18 @@ func (cc *CartController) GetCart(c *gin.Context) {
 
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			// Create a new cart if not exists
+			// Create a new cart if none exists for this user
 			newCart := models.Cart{UserID: userID}
 			if err := cc.DB.Create(&newCart).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create cart"})
 				return
 			}
+			// Reload the new cart with preloaded CartItems.Product (should be empty)
+			cc.DB.Preload("CartItems.Product").First(&newCart, newCart.ID)
 			c.JSON(http.StatusOK, gin.H{"data": newCart})
 			return
 		}
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch cart"})
 		return
 	}
