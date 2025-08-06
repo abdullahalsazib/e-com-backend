@@ -14,7 +14,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	r := gin.Default()
 
 	config := cors.Config{
-		AllowOrigins: []string{"http://localhost:3000"},
+		AllowOrigins: []string{"https://e-com-nextjs-brown.vercel.app"},
 		// AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
