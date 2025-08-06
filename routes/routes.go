@@ -14,23 +14,23 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	r := gin.Default()
 
 	config := cors.Config{
-		AllowOrigins: []string{"https://e-com-nextjs-brown.vercel.app"},
-		// AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		AllowOrigins:     []string{"https://e-com-nextjs-brown.vercel.app"},
+	    AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+	    AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+	    ExposeHeaders:    []string{"Content-Length"},
+	    AllowCredentials: true,
+	    MaxAge:           12 * time.Hour,
 	}
 
 	r.Use(cors.New(config))
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "DELETE", "PUT", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
+		AllowOrigins:     []string{"https://e-com-nextjs-brown.vercel.app"},
+	    AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+	    AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+	    ExposeHeaders:    []string{"Content-Length"},
+	    AllowCredentials: true,
+	    MaxAge:           12 * time.Hour,
 	}))
 	// initilize controllers
 	// auth
