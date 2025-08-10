@@ -16,13 +16,13 @@ type Claims struct {
 }
 
 func GenerateTokenPair(userID uint, role string) (string, string, error) {
-	// Access token (15 min expiry)
-	accessTokenExp := time.Now().Add(15 * time.Minute).Unix()
+
 	accessClaims := &Claims{
 		UserID: userID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Unix(accessTokenExp, 0)),
+			// Access token (15 min expiry)
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 		},
 	}
 
@@ -32,14 +32,13 @@ func GenerateTokenPair(userID uint, role string) (string, string, error) {
 		return "", "", err
 	}
 
-	refreshTokenExp := time.Now().Add(7 * 24 * time.Hour).Unix()
 	refreshTokenID := uuid.New().String()
 
 	refreshClaims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        refreshTokenID,
-			ExpiresAt: jwt.NewNumericDate(time.Unix(refreshTokenExp, 0)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // Refresh token (7 days expiry)
 		},
 	}
 

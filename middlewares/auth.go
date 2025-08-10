@@ -45,10 +45,16 @@ func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Extract role from user roles
+		var roleSlugs []string
+		for _, role := range user.Roles {
+			roleSlugs = append(roleSlugs, role.Slug)
+		}
+
 		// Store user info in context
 		ctx.Set("currentUser", &user)
 		ctx.Set("user_id", user.ID)
-		ctx.Set("role", user.Role)
+		ctx.Set("role", roleSlugs)
 
 		ctx.Next()
 	}

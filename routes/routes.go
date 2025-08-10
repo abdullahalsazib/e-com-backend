@@ -52,7 +52,8 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	// public route
 	r.POST("/register", authController.Register)
 	r.POST("/login", authController.Login)
-	r.POST("/refresh", authController.Refresh)
+	r.POST("/refresh", authController.RefreshToken)
+	r.POST("/logout", authController.Logout)
 	r.GET("/categorys", categoryController.GetCategories)
 	//
 	authGroup := r.Group("/auth")
