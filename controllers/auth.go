@@ -21,22 +21,22 @@ func NewAuthController(DB *gorm.DB) AuthController {
 	return AuthController{DB}
 }
 
-func (ac *AuthController) Register(c *gin.Context) {
-	var payload struct {
-		Name     string `json:"name" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,min=4"`                          // ideally min=8
-		RoleSlug string `json:"role" binding:"required,oneof=admin user superadmin vendor"` // slug
-	}
+type RegisterInput struct {
+	Name     string `json:"name" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=4"` // Minimum 6-8 characters
+}
 
-	if err := c.ShouldBindJSON(&payload); err != nil {
+func (ac *AuthController) Register(c *gin.Context) {
+	var input RegisterInput
+	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Check if user already exists
 	var existingUser models.User
-	if err := ac.DB.Where("email = ?", payload.Email).First(&existingUser).Error; err == nil {
+	if err := ac.DB.Where("email = ?", input.Email).First(&existingUser).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User with this email already exists"})
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -45,41 +45,52 @@ func (ac *AuthController) Register(c *gin.Context) {
 	}
 
 	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(payload.Password), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password", "details": err.Error()})
+	hashedPass, _ := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+
+	// Find default "user" role
+	var userRole models.Role
+	if err := ac.DB.Where("slug = ?", "user").First(&userRole).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Default role not found"})
 		return
 	}
 
-	// Find role by slug
+	// Create user
+	user := models.User{
+		Name:      input.Name,
+		Email:     input.Email,
+		Password:  string(hashedPass),
+		IsActive:  true,
+		Roles:     []models.Role{userRole}, // Initially no roles
+		CreatedBy: 0,                       // system-created
+	}
+
+	if err := ac.DB.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create user"})
+		return
+	}
+
+	// Ensure "user" role exists
 	var role models.Role
-	if err := ac.DB.Where("slug = ?", payload.RoleSlug).First(&role).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role"})
-		return
+	if err := ac.DB.Where("name = ?", "User").First(&role).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			role = models.Role{Name: "user"}
+			ac.DB.Create(&role)
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not find/create role"})
+			return
+		}
 	}
 
-	// Create user with roles assigned
-	newUser := models.User{
-		Name:     payload.Name,
-		Email:    payload.Email,
-		Password: string(hashedPassword),
-		IsActive: true,
-		Roles:    []models.Role{role}, // Assign role here
-	}
+	// Assign role to user
+	ac.DB.Create(&models.UserRole{
+		UserID: user.ID,
+		RoleID: role.ID,
+	})
 
-	if err := ac.DB.Create(&newUser).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user", "details": err.Error()})
-		return
-	}
-
-	// err = utils.SendWellcomeEmail(payload.Name, payload.Email)
-	// if err != nil {
-	// 	// Warning: email fail hole রেজিস্ট্রেশন রোলব্যাক করার দরকার নেই, তাই শুধু log or warning দাও
-	// 	c.JSON(http.StatusOK, gin.H{"warning": "User created but failed to send welcome email"})
-	// 	return
-	// }
-
-	c.JSON(http.StatusOK, gin.H{"message": "User created successfully"})
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "User registered successfully",
+		"user":    user,
+	})
 }
 
 // login
@@ -246,6 +257,8 @@ func (ac *AuthController) RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": newAccessToken,
 		"expires_in":   15 * 60, // ১৫ মিনিট
+		"role":         roleSlugs,
+		"message":      "Token refreshed successfully",
 	})
 }
 

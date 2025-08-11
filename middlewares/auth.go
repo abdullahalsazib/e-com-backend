@@ -11,7 +11,6 @@ import (
 )
 
 var jwtSecret = []byte("your_secret_key") // set your secret key
-
 func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		authHeader := ctx.GetHeader("Authorization")
@@ -38,20 +37,20 @@ func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Fetch user by ID from claims
+		// Fetch user with roles (IMPORTANT: Preload)
 		var user models.User
-		if err := DB.First(&user, claims.UserID).Error; err != nil {
+		if err := DB.Preload("Roles").First(&user, claims.UserID).Error; err != nil {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "User not found"})
 			return
 		}
 
-		// Extract role from user roles
+		// Extract role slugs
 		var roleSlugs []string
 		for _, role := range user.Roles {
 			roleSlugs = append(roleSlugs, role.Slug)
 		}
 
-		// Store user info in context
+		// Save to context
 		ctx.Set("currentUser", &user)
 		ctx.Set("user_id", user.ID)
 		ctx.Set("role", roleSlugs)
@@ -62,18 +61,35 @@ func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 
 func AdminSellerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("role")
+		roles, exists := c.Get("role")
+
 		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required 1"})
 			return
 		}
 
-		roleStr, ok := role.(string)
-		if !ok || roleStr != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required"})
+		roleSlice, ok := roles.([]string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Invalid role format"})
 			return
 		}
+
+		// Check if "admin" exists
+		isAdmin := false
+		for _, r := range roleSlice {
+			if r == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+
+		if !isAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required 1"})
+			return
+		}
+
 		c.Next()
+
 	}
 }
 

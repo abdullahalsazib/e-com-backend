@@ -12,6 +12,7 @@ type Vendor struct {
 	UserID     uint           `gorm:"uniqueIndex" json:"user_id"` // linked to users table
 	ShopName   string         `gorm:"size:255" json:"shop_name"`
 	Status     string         `gorm:"size:50;default:'pending'" json:"status"` // pending/active/suspended/rejected
+	User       User           `gorm:"foreignKey:UserID" json:"user"`           // linked user, if any
 	ApprovedBy *uint          `json:"approved_by"`                             // user id of super-admin who approved
 	ApprovedAt *time.Time     `json:"approved_at"`
 	CreatedAt  time.Time      `json:"created_at"`

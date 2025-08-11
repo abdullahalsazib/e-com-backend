@@ -44,8 +44,8 @@ func SeedSuperAdmin(db *gorm.DB) {
 
 	// ২. তারপর একটা Super Admin user তৈরি করো (email/password)
 	var user models.User
-	email := "superadmin@example.com"    // production এ environment variable ব্যবহার করো
-	password := "SuperSecurePassword123" // production এ environment variable ব্যবহার করো
+	email := "super@admin.com" // production এ environment variable ব্যবহার করো
+	password := "super123"     // production এ environment variable ব্যবহার করো
 
 	err := db.Where("email = ?", email).First(&user).Error
 	if err == gorm.ErrRecordNotFound {

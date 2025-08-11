@@ -22,6 +22,8 @@ func main() {
 	db.AutoMigrate(
 		// Add Role model migration
 		&models.User{},
+		&models.Vendor{},
+		&models.AuditLog{},
 		&models.Token{},
 		&models.Role{},
 		&models.Permission{},

@@ -7,10 +7,9 @@ import (
 )
 
 type Role struct {
-	ID   uint   `gorm:"primaryKey" json:"id"`
-	Name string `gorm:"size:100;uniqueIndex;not null" json:"name"`
-	Slug string `gorm:"size:100;uniqueIndex;not null" json:"slug"`
-	// Permissions []Permission   `gorm:"many2many:role_permissions;" json:"permissions"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	Name      string         `gorm:"size:100;uniqueIndex;not null" json:"name"`
+	Slug      string         `gorm:"size:100;uniqueIndex;not null" json:"slug"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
