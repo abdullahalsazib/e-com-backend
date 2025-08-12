@@ -12,11 +12,15 @@ import (
 )
 
 type VendorController struct {
-	DB *gorm.DB
+	DB       *gorm.DB
+	AuthCtrl *AuthController
 }
 
-func NewVendorController(db *gorm.DB) *VendorController {
-	return &VendorController{DB: db}
+func NewVendorController(db *gorm.DB, authCtrl *AuthController) *VendorController {
+	return &VendorController{
+		DB:       db,
+		AuthCtrl: authCtrl,
+	}
 }
 
 // User applies to become a vendor
@@ -29,7 +33,7 @@ func (vc *VendorController) VendorApply(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetUint("user_id") // JWT middleware থেকে আসবে
+	userID := c.GetUint("user_id") // Comes from JWT middleware
 
 	// Check if vendor already applied
 	var existing models.Vendor
@@ -72,7 +76,7 @@ func (vc *VendorController) ListVendors(c *gin.Context) {
 		query = query.Where("status = ?", status)
 	}
 
-	// User এবং তার Roles একসাথে লোড করবে
+	// Load User and their Roles together
 	query = query.Preload("User.Roles")
 
 	err := query.Find(&vendors).Error
@@ -104,7 +108,7 @@ func (vc *VendorController) GetVendor(c *gin.Context) {
 
 // Approve vendor (superadmin only)
 func (vc *VendorController) ApproveVendor(c *gin.Context) {
-	vc.updateVendorStatus(c, "active")
+	vc.updateVendorStatus(c, "approved")
 }
 
 // Reject vendor (superadmin only)
@@ -137,7 +141,6 @@ func (vc *VendorController) updateVendorStatus(c *gin.Context, newStatus string)
 		return
 	}
 
-	// Get superadmin user id from context (middleware sets it)
 	actorIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -147,43 +150,47 @@ func (vc *VendorController) updateVendorStatus(c *gin.Context, newStatus string)
 
 	now := time.Now()
 	vendor.Status = newStatus
-	if newStatus == "active" {
+
+	var user models.User
+	if err := vc.DB.Preload("Roles").First(&user, vendor.UserID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found"})
+		return
+	}
+
+	if newStatus == "approved" {
 		vendor.ApprovedBy = &actorID
 		vendor.ApprovedAt = &now
 
-		// APPROVE হলে user এর roles এ "admin" role add করা হবে
-		var user models.User
-		if err := vc.DB.Preload("Roles").First(&user, vendor.UserID).Error; err == nil {
-			adminRole := models.Role{}
-			if err := vc.DB.Where("slug = ?", "admin").First(&adminRole).Error; err == nil {
-				hasAdminRole := false
-				for _, role := range user.Roles {
-					if role.ID == adminRole.ID {
-						hasAdminRole = true
-						break
-					}
-				}
-				if !hasAdminRole {
-					user.Roles = append(user.Roles, adminRole)
-					if err := vc.DB.Save(&user).Error; err != nil {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign admin role to user"})
-						return
-					}
-				}
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Admin role not found"})
-				return
-			}
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found"})
+		// AuthController er helper method diye admin role add koro
+		if err := vc.AuthCtrl.AddAdminRoleByUser(&user); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add admin role"})
+			return
+		}
+
+		// Ensure user role o thakbe
+		if err := vc.AuthCtrl.AddRoleByUserSlug(&user, "user"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add user role"})
+			return
+		}
+
+	} else if newStatus == "rejected" || newStatus == "suspended" {
+		vendor.ApprovedBy = nil
+		vendor.ApprovedAt = nil
+
+		// Admin role remove koro
+		if err := vc.AuthCtrl.RemoveAdminRoleByUser(&user); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove admin role"})
+			return
+		}
+
+		// Ensure user role thakbe
+		if err := vc.AuthCtrl.AddRoleByUserSlug(&user, "user"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to ensure user role"})
 			return
 		}
 	} else {
-		// Reject or Suspend হলে ApproveBy/ApproveAt NULL set করবে
 		vendor.ApprovedBy = nil
 		vendor.ApprovedAt = nil
-		// (Optional) তুমি চাইলে reject/suspend হলে "admin" role remove করতে পারো,
-		// তবে সাধারনত remove করা হয় না, কারণ user অন্য vendor/admin হিসাবেও থাকতে পারে
 	}
 
 	if err := vc.DB.Save(&vendor).Error; err != nil {
@@ -191,7 +198,6 @@ func (vc *VendorController) updateVendorStatus(c *gin.Context, newStatus string)
 		return
 	}
 
-	// Create audit log entry
 	oldValJSON, _ := json.Marshal(map[string]string{"status": oldStatus})
 	newValJSON, _ := json.Marshal(map[string]string{"status": newStatus})
 
@@ -201,7 +207,6 @@ func (vc *VendorController) updateVendorStatus(c *gin.Context, newStatus string)
 		Resource: "vendor:" + idStr,
 		OldValue: string(oldValJSON),
 		NewValue: string(newValJSON),
-		// CreatedAt: now, // GORM নিজে handle করে
 	}
 
 	if err := vc.DB.Create(&auditLog).Error; err != nil {

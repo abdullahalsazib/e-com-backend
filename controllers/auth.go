@@ -289,3 +289,41 @@ func (ac *AuthController) Logout(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
+
+func (ac *AuthController) AddAdminRoleByUser(user *models.User) error {
+	var adminRole models.Role
+	if err := ac.DB.Where("slug = ?", "admin").First(&adminRole).Error; err != nil {
+		return err
+	}
+
+	for _, r := range user.Roles {
+		if r.ID == adminRole.ID {
+			return nil
+		}
+	}
+
+	return ac.DB.Model(user).Association("Roles").Append(&adminRole)
+}
+
+func (ac *AuthController) RemoveAdminRoleByUser(user *models.User) error {
+	var adminRole models.Role
+	if err := ac.DB.Where("slug = ?", "admin").First(&adminRole).Error; err != nil {
+		return err
+	}
+	return ac.DB.Model(user).Association("Roles").Delete(&adminRole)
+}
+
+func (ac *AuthController) AddRoleByUserSlug(user *models.User, slug string) error {
+	var role models.Role
+	if err := ac.DB.Where("slug = ?", slug).First(&role).Error; err != nil {
+		return err
+	}
+
+	for _, r := range user.Roles {
+		if r.ID == role.ID {
+			return nil
+		}
+	}
+
+	return ac.DB.Model(user).Association("Roles").Append(&role)
+}

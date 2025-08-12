@@ -32,7 +32,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	orderController := controllers.NewOrderController(db)
 	categoryController := controllers.NewCategoryController(db)
 	wishlistController := controllers.NewWishlistController(db)
-	vendorController := controllers.NewVendorController(db)
+	vendorController := controllers.NewVendorController(db, &authController)
 
 	// ==== PUBLIC ROUTES ====
 	r.POST("/register", authController.Register)
