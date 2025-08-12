@@ -20,9 +20,18 @@ func main() {
 	config.ConnectDB()
 	db := config.DB
 	db.AutoMigrate(
-		&models.Product{},
+		// Add Role model migration
 		&models.User{},
+		&models.Vendor{},
+		&models.AuditLog{},
 		&models.Token{},
+		&models.Role{},
+		&models.Permission{},
+		&models.RolePermission{},
+		&models.UserRole{},
+
+		// Add other models
+		&models.Product{},
 		&models.Cart{},
 		&models.CartItem{},
 		&models.Category{},
@@ -33,6 +42,10 @@ func main() {
 
 	// seed category
 	seed.SeedCategories(db)
+	// seed roles and super admin
+	seed.SeedRoles(db)
+	seed.SeedSuperAdmin(db)
+
 	// setup models
 	r := routes.SetupRoutes(db)
 

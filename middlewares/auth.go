@@ -11,7 +11,6 @@ import (
 )
 
 var jwtSecret = []byte("your_secret_key") // set your secret key
-
 func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		authHeader := ctx.GetHeader("Authorization")
@@ -38,17 +37,23 @@ func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Fetch user by ID from claims
+		// Fetch user with roles (IMPORTANT: Preload)
 		var user models.User
-		if err := DB.First(&user, claims.UserID).Error; err != nil {
+		if err := DB.Preload("Roles").First(&user, claims.UserID).Error; err != nil {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "User not found"})
 			return
 		}
 
-		// Store user info in context
+		// Extract role slugs
+		var roleSlugs []string
+		for _, role := range user.Roles {
+			roleSlugs = append(roleSlugs, role.Slug)
+		}
+
+		// Save to context
 		ctx.Set("currentUser", &user)
 		ctx.Set("user_id", user.ID)
-		ctx.Set("role", user.Role)
+		ctx.Set("role", roleSlugs)
 
 		ctx.Next()
 	}
@@ -56,77 +61,34 @@ func AuthMiddleware(DB *gorm.DB) gin.HandlerFunc {
 
 func AdminSellerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("role")
+		roles, exists := c.Get("role")
+
 		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required 1"})
 			return
 		}
 
-		roleStr, ok := role.(string)
-		if !ok || roleStr != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required"})
+		roleSlice, ok := roles.([]string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Invalid role format"})
 			return
 		}
+
+		// Check if "admin" exists
+		isAdmin := false
+		for _, r := range roleSlice {
+			if r == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+
+		if !isAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Only Admin access required 1"})
+			return
+		}
+
 		c.Next()
+
 	}
 }
-
-// func AdminMiddleware() gin.HandlerFunc {
-// 	return func(ctx *gin.Context) {
-// 		role := ctx.GetString("userRole")
-// 		if role != "admin" && role != "superadmin" {
-// 			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-// 			return
-// 		}
-// 		ctx.Next()
-// 	}
-// }
-//
-// func AdminOnly() gin.HandlerFunc {
-// 	return func(c *gin.Context) {
-// 		authHeader := c.GetHeader("Authorization")
-// 		if authHeader == "" {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header missing"})
-// 			c.Abort()
-// 			return
-// 		}
-//
-// 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-// 		if tokenString == authHeader {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token missing"})
-// 			c.Abort()
-// 			return
-// 		}
-//
-// 		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-// 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-// 				return nil, jwt.ErrSignatureInvalid
-// 			}
-// 			return jwtSecret, nil
-// 		})
-//
-// 		if err != nil || !token.Valid {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-// 			c.Abort()
-// 			return
-// 		}
-//
-// 		claims, ok := token.Claims.(jwt.MapClaims)
-// 		if !ok || claims["role"] == nil {
-// 			c.JSON(http.StatusForbidden, gin.H{"error": "Invalid token claims"})
-// 			c.Abort()
-// 			return
-// 		}
-//
-// 		role := claims["role"].(string)
-// 		if role != "admin" && role != "superAdmin" {
-// 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: admin only"})
-// 			c.Abort()
-// 			return
-// 		}
-//
-// 		// Store role/user_id in context if needed
-// 		c.Set("role", role)
-// 		c.Next()
-// 	}
-// }

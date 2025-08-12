@@ -21,9 +21,9 @@ func SeedCategories(db *gorm.DB) {
 		if err := db.Where("name = ?", category.Name).First(&existing).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				if err := db.Create(&category).Error; err != nil {
-					log.Printf("❌ Failed to seed category %s: %v", category.Name, err)
+					log.Printf(" Failed to seed category %s: %v", category.Name, err)
 				} else {
-					log.Printf("✅ Category %s seeded successfully", category.Name)
+					log.Printf(" Category %s seeded successfully", category.Name)
 				}
 			}
 		}

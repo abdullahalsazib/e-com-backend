@@ -16,8 +16,8 @@ func ConnectDB() {
 
 	// get DATABASE_URL from .env
 	// webDsn = os.Getenv("DATABASE_URL")
-	// dsn = os.Getenv("LOCALHOST_DTABASE_URL")
-	dsn := os.Getenv("DATABASE_URL")
+	dsn := os.Getenv("LOCALHOST_DTABASE_URL")
+	// dsn := os.Getenv("DATABASE_URL")
 
 	if dsn == "" {
 		log.Fatal("DATABASE_URL is not set")

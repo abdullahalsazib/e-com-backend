@@ -3,6 +3,7 @@ package controllers
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/abdullahalsazib/e-com-backend/models"
@@ -20,112 +21,153 @@ func NewAuthController(DB *gorm.DB) AuthController {
 	return AuthController{DB}
 }
 
-func (ac *AuthController) Register(c *gin.Context) {
-	var payload struct {
-		Name     string `json:"name" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,min=4"` // min >= 8
-		Role     string `json:"role" binding:"required,oneof=admin user superadmin"`
-	}
+type RegisterInput struct {
+	Name     string `json:"name" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=4"` // Minimum 6-8 characters
+}
 
-	// Bind -> json and validate
-	if err := c.ShouldBindJSON(&payload); err != nil {
+func (ac *AuthController) Register(c *gin.Context) {
+	var input RegisterInput
+	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// check for existing user
+	// Check if user already exists
 	var existingUser models.User
-	if err := ac.DB.Where("email = ?", payload.Email).First(&existingUser).Error; err == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "User with this email already exists"})
+	if err := ac.DB.Where("email = ?", input.Email).First(&existingUser).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User with this email already exists"})
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error cheching for existing user", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error checking for existing user", "details": err.Error()})
 		return
 	}
 
 	// Hash password
+	hashedPass, _ := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(payload.Password), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Faild to hash password", "details": err.Error()})
+	// Find default "user" role
+	var userRole models.Role
+	if err := ac.DB.Where("slug = ?", "user").First(&userRole).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Default role not found"})
 		return
 	}
 
-	// create user
-	newUser := models.User{
-		Name:     payload.Name,
-		Email:    payload.Email,
-		Role:     payload.Role,
-		Password: string(hashedPassword),
+	// Create user
+	user := models.User{
+		Name:      input.Name,
+		Email:     input.Email,
+		Password:  string(hashedPass),
+		IsActive:  true,
+		Roles:     []models.Role{userRole}, // Initially no roles
+		CreatedBy: 0,                       // system-created
 	}
-	if err := ac.DB.Create(&newUser).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Faild to create user", "details": err.Error()})
+
+	if err := ac.DB.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create user"})
 		return
 	}
-	err = utils.SendWellcomeEmail(payload.Name, payload.Email)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "some issu for send message on email"})
+
+	// Ensure "user" role exists
+	var role models.Role
+	if err := ac.DB.Where("name = ?", "User").First(&role).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			role = models.Role{Name: "user"}
+			ac.DB.Create(&role)
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not find/create role"})
+			return
+		}
 	}
-	// Return create user (without password)
-	c.JSON(http.StatusOK, gin.H{"message": "User created succesfully"})
+
+	// Assign role to user
+	ac.DB.Create(&models.UserRole{
+		UserID: user.ID,
+		RoleID: role.ID,
+	})
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "User registered successfully",
+		"user":    user,
+	})
 }
 
 // login
+
 func (ac *AuthController) Login(c *gin.Context) {
 	var payload struct {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`
 	}
 
+	// JSON bind and validation
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var user models.User
-	if err := ac.DB.Where("email = ?", payload.Email).First(&user).Error; err != nil {
+	// Preload roles to get user's roles
+	if err := ac.DB.Preload("Roles").Where("email = ?", payload.Email).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
-	// compair the hashed password
+	// Compare hashed password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(payload.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
-	// access_token and refresh_token
-	accessToken, refreshToken, err := utils.GenerateTokenPair(user.ID, user.Role)
+	// Collect role slugs
+	var roleSlugs []string
+	for _, role := range user.Roles {
+		roleSlugs = append(roleSlugs, role.Slug)
+	}
+	rolesStr := strings.Join(roleSlugs, ",")
+
+	// Generate access and refresh tokens
+	accessToken, refreshToken, err := utils.GenerateTokenPair(user.ID, rolesStr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 		return
 	}
 
-	// Store refresh token in database
+	// Save refresh token in DB
 	refreshTokenExp := time.Now().Add(7 * 24 * time.Hour).Unix()
 	token := models.Token{
 		UserID:    user.ID,
 		Token:     refreshToken,
 		ExpiresAt: refreshTokenExp,
-		Role:      user.Role,
+		Role:      rolesStr,
 	}
-
 	if err := ac.DB.Create(&token).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving refresh token"})
 		return
 	}
 
+	// Set refresh token as HttpOnly cookie
+	c.SetCookie(
+		"refresh_token",
+		refreshToken,
+		7*24*60*60, // 7 দিন (সেকেন্ডে)
+		"/",
+		"localhost", // ডেভেলপমেন্টে localhost, প্রোডাকশনে তোমার ডোমেইন দিবে
+		false,       // ডেভেলপমেন্টে false, প্রোডাকশনে true (https এর জন্য)
+		true,        // HttpOnly true
+	)
+
+	// Return access token in JSON response
 	c.JSON(http.StatusOK, gin.H{
-		"message":      "Login succesfully",
+		"message":      "Login successfully",
 		"access_token": accessToken,
-		// "refresh_token": refreshToken,
-		"expires_in": 15 * 60,
-		"role":       user.Role,
+		"expires_in":   15 * 60, // ১৫ মিনিট
+		"role":         roleSlugs,
 	})
 }
 
-// GET the Profile
+// GET /profile
 func (ac *AuthController) GetProfile(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -135,94 +177,153 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 
 	var user models.User
 
-	if err := ac.DB.First(&user, userID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+	// এখানে Preload("Roles") ব্যবহার করতে হবে
+	if err := ac.DB.Preload("Roles").First(&user, userID).Error; err != nil {
+		switch err {
+		case gorm.ErrRecordNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		} else {
+		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching user profile"})
 		}
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Get User",
-		"data":    user,
+		"message": "User profile fetched successfully",
+		"data": gin.H{
+			"id":        user.ID,
+			"name":      user.Name,
+			"email":     user.Email,
+			"roles":     user.Roles, // এখন এটা null হবে না
+			"createdAt": user.CreatedAt,
+			"updatedAt": user.UpdatedAt,
+		},
 	})
 }
 
 // refresh
-func (ac *AuthController) Refresh(c *gin.Context) {
-	var refreshData struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&refreshData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+func (ac *AuthController) RefreshToken(c *gin.Context) {
+	// Refresh Token cookie থেকে নেওয়া
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not found"})
 		return
 	}
 
-	// verify Refresh( token)
-	claims, err := utils.ParseToken(refreshData.RefreshToken)
+	// Token Parse ও Validate করা
+	claims, err := utils.ParseToken(refreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
 		return
 	}
 
-	// check if Refresh token exists in database
+	// ডাটাবেজ থেকে Refresh Token ভ্যালিডেট করা
 	var token models.Token
-	if err := ac.DB.Where("token = ? AND user_id = ?", refreshData.RefreshToken, claims.UserID).First(&token).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+	if err := ac.DB.Where("token = ? AND user_id = ?", refreshToken, claims.UserID).First(&token).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not valid"})
 		return
 	}
 
-	// Check if refresh token is expired
+	// Token মেয়াদ শেষ হয়েছে কি না চেক করা
 	if time.Now().Unix() > token.ExpiresAt {
+		// মেয়াদ শেষ হলে Token ডিলিট করাও ভালো (Optional)
+		ac.DB.Delete(&token)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token expired"})
 		return
 	}
 
-	// Generate new token pair
-	accessToken, newRefreshToken, err := utils.GenerateTokenPair(claims.UserID, claims.Role)
+	// ইউজারের তথ্য ও Roles লোড করা
+	var user models.User
+	if err := ac.DB.Preload("Roles").First(&user, claims.UserID).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Roles থেকে Slug নিয়ে আসা
+	var roleSlugs []string
+	for _, role := range user.Roles {
+		roleSlugs = append(roleSlugs, role.Slug)
+	}
+	rolesStr := strings.Join(roleSlugs, ",")
+
+	// নতুন Access Token জেনারেট (Refresh Token আগেরই থাকবে)
+	newAccessToken, _, err := utils.GenerateTokenPair(user.ID, rolesStr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating tokens"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate access token"})
 		return
 	}
 
-	// Delete old refresh token
-	ac.DB.Delete(&token)
-
-	// Store new refresh token
-	newRefreshTokenExp := time.Now().Add(7 * 24 * time.Hour).Unix()
-	newToken := models.Token{
-		UserID:    claims.UserID,
-		Token:     newRefreshToken,
-		ExpiresAt: newRefreshTokenExp,
-	}
-
-	if err := ac.DB.Create(&newToken).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving refresh token"})
-		return
-	}
-
+	// নতুন Access Token রেসপন্স পাঠানো
 	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": newRefreshToken,
-		"expires_in":    15 * 60, // 15 minutes
+		"access_token": newAccessToken,
+		"expires_in":   15 * 60, // ১৫ মিনিট
+		"role":         roleSlugs,
+		"message":      "Token refreshed successfully",
 	})
 }
 
+// logout
 func (ac *AuthController) Logout(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Refresh token not found"})
 		return
 	}
 
-	// Delete all refresh tokens for this user
-	if err := ac.DB.Where("user_id = ?", userID).Delete(&models.Token{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error logging out"})
+	// Hard delete the token from DB
+	if err := ac.DB.Unscoped().Where("token = ?", refreshToken).Delete(&models.Token{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete refresh token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
+	// Clear cookie
+	c.SetCookie(
+		"refresh_token",
+		"",
+		-1,
+		"/",
+		"localhost",
+		false,
+		true,
+	)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+func (ac *AuthController) AddAdminRoleByUser(user *models.User) error {
+	var adminRole models.Role
+	if err := ac.DB.Where("slug = ?", "admin").First(&adminRole).Error; err != nil {
+		return err
+	}
+
+	for _, r := range user.Roles {
+		if r.ID == adminRole.ID {
+			return nil
+		}
+	}
+
+	return ac.DB.Model(user).Association("Roles").Append(&adminRole)
+}
+
+func (ac *AuthController) RemoveAdminRoleByUser(user *models.User) error {
+	var adminRole models.Role
+	if err := ac.DB.Where("slug = ?", "admin").First(&adminRole).Error; err != nil {
+		return err
+	}
+	return ac.DB.Model(user).Association("Roles").Delete(&adminRole)
+}
+
+func (ac *AuthController) AddRoleByUserSlug(user *models.User, slug string) error {
+	var role models.Role
+	if err := ac.DB.Where("slug = ?", slug).First(&role).Error; err != nil {
+		return err
+	}
+
+	for _, r := range user.Roles {
+		if r.ID == role.ID {
+			return nil
+		}
+	}
+
+	return ac.DB.Model(user).Association("Roles").Append(&role)
 }

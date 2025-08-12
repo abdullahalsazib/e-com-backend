@@ -75,7 +75,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Product created successfully", "data": newProduct})
+	c.JSON(http.StatusCreated, gin.H{"message": "Product created successfully"})
 }
 
 func (pc *ProductController) GetProducts(c *gin.Context) {
