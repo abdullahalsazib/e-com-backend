@@ -151,18 +151,18 @@ func (ac *AuthController) Login(c *gin.Context) {
 	c.SetCookie(
 		"refresh_token",
 		refreshToken,
-		7*24*60*60, // 7 দিন (সেকেন্ডে)
+		7*24*60*60,
 		"/",
-		"localhost", // ডেভেলপমেন্টে localhost, প্রোডাকশনে তোমার ডোমেইন দিবে
-		false,       // ডেভেলপমেন্টে false, প্রোডাকশনে true (https এর জন্য)
-		true,        // HttpOnly true
+		"localhost",
+		false,
+		true,
 	)
 
 	// Return access token in JSON response
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "Login successfully",
 		"access_token": accessToken,
-		"expires_in":   15 * 60, // ১৫ মিনিট
+		"expires_in":   15 * 60, // 15 minutes
 		"role":         roleSlugs,
 	})
 }
@@ -177,7 +177,7 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 
 	var user models.User
 
-	// এখানে Preload("Roles") ব্যবহার করতে হবে
+	// Preload("Roles")
 	if err := ac.DB.Preload("Roles").First(&user, userID).Error; err != nil {
 		switch err {
 		case gorm.ErrRecordNotFound:
@@ -194,7 +194,7 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 			"id":        user.ID,
 			"name":      user.Name,
 			"email":     user.Email,
-			"roles":     user.Roles, // এখন এটা null হবে না
+			"roles":     user.Roles,
 			"createdAt": user.CreatedAt,
 			"updatedAt": user.UpdatedAt,
 		},
