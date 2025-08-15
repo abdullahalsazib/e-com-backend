@@ -67,7 +67,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 		ImageURL:    payload.ImageURL,
 		CategoryID:  payload.CategoryID,
 		UserID:      userIDUint,
-		CreatedBy:   userIDUint,
+		Status:      "pending", // Default status
 	}
 
 	if err := pc.DB.Create(&newProduct).Error; err != nil {
@@ -142,16 +142,13 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 
 	var updatedProduct models.Product
 
-	// fmt.Println("-------------------: ")
-	// fmt.Println("paramis: ", productIdStr)
-	// fmt.Println("-------------------: ")
 	result := pc.DB.First(&updatedProduct, productId)
 	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 		return
 	}
 
-	if updatedProduct.CreatedBy != userIDUint {
+	if updatedProduct.UserID != userIDUint {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own products"})
 		return
 	}
@@ -191,7 +188,7 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 		return
 	}
 
-	if product.CreatedBy != userID {
+	if product.UserID != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own products"})
 		return
 	}
@@ -204,22 +201,67 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Product delete succesfully"})
 }
 
-type CategoryController struct {
-	DB *gorm.DB
+func hasRole(user models.User, role string) bool {
+	for _, r := range user.Roles {
+		if r.Slug == role {
+			return true
+		}
+	}
+	return false
 }
 
-func NewCategoryController(DB *gorm.DB) CategoryController {
-	return CategoryController{DB}
-}
+func (pc *ProductController) UpdateProductStatus(c *gin.Context) {
+	productID := c.Param("id")
 
-// GET /categories
-func (cc *CategoryController) GetCategories(c *gin.Context) {
-	var categories []models.Category
-	// var categories models.Category
-	if err := cc.DB.Find(&categories).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get categories"})
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"categories": categories})
+	validStatus := map[string]bool{
+		"published": true,
+		"private":   true,
+		"pending":   true,
+	}
+	if !validStatus[req.Status] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status"})
+		return
+	}
+
+	// JWT theke current user
+	u, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	currentUser := u.(models.User)
+
+	var product models.Product
+	if err := pc.DB.First(&product, productID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+		return
+	}
+
+	// jodi admin/superadmin hoie, tahole je kono product update korte parbe
+	if hasRole(currentUser, "admin") || hasRole(currentUser, "superadmin") {
+		// ok
+	} else {
+		// Vendor hole sudho nejer product update korte parbe
+		if product.UserID != currentUser.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own products"})
+			return
+		}
+	}
+
+	// Update status
+	product.Status = req.Status
+	if err := pc.DB.Save(&product).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Product status updated", "product": product})
 }
