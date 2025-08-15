@@ -109,6 +109,14 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	{
 		superAdmin.GET("/users", superAdminController.ListUsers)
 		superAdmin.DELETE("/users/:id", superAdminController.DeleteUserByID)
+		// superAdminGroup.GET("/users/:id", authController.GetUser)
+		// superAdminGroup.PUT("/users/:id/role", authController.UpdateUserRole)
+		// superAdminGroup.DELETE("/users/:id", authController.DeleteUser)
+
+		// superAdminGroup.GET("/categories", categoryController.ListCategories)
+		// superAdminGroup.POST("/categories", categoryController.CreateCategory)
+		// superAdminGroup.PUT("/categories/:id", categoryController.UpdateCategory)
+		// superAdminGroup.DELETE("/categories/:id", categoryController.DeleteCategory)
 	}
 
 	// ==== PRODUCT CATEGORY ROUTES ====
