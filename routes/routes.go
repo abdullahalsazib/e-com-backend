@@ -46,7 +46,6 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	authGroup.Use(middlewares.AuthMiddleware(db))
 	{
 		authGroup.GET("/me", authController.GetProfile)
-		// authGroup.POST("/logout", authController.Logout)
 	}
 
 	// ==== PRODUCT ROUTES ====
@@ -101,22 +100,6 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		cartGroup.PUT("/items/:itemId", cartController.UpdateCartItem)
 		cartGroup.DELETE("/items/:itemId", cartController.RemoveFromCart)
 		cartGroup.DELETE("/clear", cartController.ClearCart)
-	}
-	// ==== SUPER ADMIN ROUTES ====
-
-	superAdmin := r.Group("/super-admin")
-	superAdmin.Use(middlewares.AuthMiddleware(db), middlewares.SuperAdminMiddleware(db))
-	{
-		superAdmin.GET("/users", superAdminController.ListUsers)
-		superAdmin.DELETE("/users/:id", superAdminController.DeleteUserByID)
-		// superAdminGroup.GET("/users/:id", authController.GetUser)
-		// superAdminGroup.PUT("/users/:id/role", authController.UpdateUserRole)
-		// superAdminGroup.DELETE("/users/:id", authController.DeleteUser)
-
-		// superAdminGroup.GET("/categories", categoryController.ListCategories)
-		// superAdminGroup.POST("/categories", categoryController.CreateCategory)
-		// superAdminGroup.PUT("/categories/:id", categoryController.UpdateCategory)
-		// superAdminGroup.DELETE("/categories/:id", categoryController.DeleteCategory)
 	}
 
 	// ==== PRODUCT CATEGORY ROUTES ====
