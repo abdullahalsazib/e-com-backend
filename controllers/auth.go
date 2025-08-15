@@ -151,18 +151,18 @@ func (ac *AuthController) Login(c *gin.Context) {
 	c.SetCookie(
 		"refresh_token",
 		refreshToken,
-		7*24*60*60,
+		7*24*60*60, // 7 day
 		"/",
 		"localhost",
 		false,
-		true,
+		true, // HttpOnly true
 	)
 
 	// Return access token in JSON response
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "Login successfully",
 		"access_token": accessToken,
-		"expires_in":   15 * 60, // 15 minutes
+		"expires_in":   15 * 60, // ১৫ min
 		"role":         roleSlugs,
 	})
 }
@@ -177,86 +177,87 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 
 	var user models.User
 
-	// Preload("Roles")
-	if err := ac.DB.Preload("Roles").First(&user, userID).Error; err != nil {
-		switch err {
-		case gorm.ErrRecordNotFound:
+	if err := ac.DB.Preload("Roles").Preload("Vendor").First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		default:
+		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching user profile"})
 		}
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"message": "User profile fetched successfully",
 		"data": gin.H{
-			"id":        user.ID,
-			"name":      user.Name,
-			"email":     user.Email,
-			"roles":     user.Roles,
+			"id":    user.ID,
+			"name":  user.Name,
+			"email": user.Email,
+			"roles": user.Roles,
+			"vendor": func() interface{} {
+				if user.Vendor != nil {
+					return gin.H{
+						"vendor_name":   user.Vendor.ShopName,
+						"vendor_status": user.Vendor.Status,
+					}
+				}
+				return nil
+			}(),
 			"createdAt": user.CreatedAt,
 			"updatedAt": user.UpdatedAt,
 		},
 	})
+
 }
 
 // refresh
 func (ac *AuthController) RefreshToken(c *gin.Context) {
-	// Refresh Token cookie থেকে নেওয়া
+	// Refresh Token cookie
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not found"})
 		return
 	}
-
-	// Token Parse ও Validate করা
 	claims, err := utils.ParseToken(refreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
 		return
 	}
 
-	// ডাটাবেজ থেকে Refresh Token ভ্যালিডেট করা
 	var token models.Token
 	if err := ac.DB.Where("token = ? AND user_id = ?", refreshToken, claims.UserID).First(&token).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not valid"})
 		return
 	}
 
-	// Token মেয়াদ শেষ হয়েছে কি না চেক করা
 	if time.Now().Unix() > token.ExpiresAt {
-		// মেয়াদ শেষ হলে Token ডিলিট করাও ভালো (Optional)
 		ac.DB.Delete(&token)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token expired"})
 		return
 	}
 
-	// ইউজারের তথ্য ও Roles লোড করা
 	var user models.User
 	if err := ac.DB.Preload("Roles").First(&user, claims.UserID).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
-	// Roles থেকে Slug নিয়ে আসা
+	// Roles  Slug
 	var roleSlugs []string
 	for _, role := range user.Roles {
 		roleSlugs = append(roleSlugs, role.Slug)
 	}
 	rolesStr := strings.Join(roleSlugs, ",")
 
-	// নতুন Access Token জেনারেট (Refresh Token আগেরই থাকবে)
+	// new Access Token generate (Refresh Token if before have)
 	newAccessToken, _, err := utils.GenerateTokenPair(user.ID, rolesStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate access token"})
 		return
 	}
 
-	// নতুন Access Token রেসপন্স পাঠানো
+	// new Access Token
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": newAccessToken,
-		"expires_in":   15 * 60, // ১৫ মিনিট
+		"expires_in":   15 * 60,
 		"role":         roleSlugs,
 		"message":      "Token refreshed successfully",
 	})
