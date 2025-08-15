@@ -111,6 +111,29 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		superAdmin.DELETE("/users/:id", superAdminController.DeleteUserByID)
 	}
 
+	// ==== PRODUCT CATEGORY ROUTES ====
+	categoryRoutes := r.Group("/categories")
+	{
+		categoryRoutes.GET("/", categoryController.GetCategories)
+		categoryRoutes.GET("/:id", categoryController.GetCategories)
+	}
+
+	// ==== SUPERADMIN  MANAGEMENT ====
+	superAdminGroup := r.Group("/super-admin")
+	superAdminGroup.Use(middlewares.AuthMiddleware(db), middlewares.SuperAdminMiddleware(db))
+	{
+		superAdminGroup.GET("/users", superAdminController.ListUsers)
+		superAdminGroup.DELETE("/users/:id", superAdminController.DeleteUserByID)
+		// superAdminGroup.GET("/users/:id", authController.GetUser)
+		// superAdminGroup.PUT("/users/:id/role", authController.UpdateUserRole)
+		// superAdminGroup.DELETE("/users/:id", authController.DeleteUser)
+
+		// superAdminGroup.GET("/categories", categoryController.ListCategories)
+		// superAdminGroup.POST("/categories", categoryController.CreateCategory)
+		// superAdminGroup.PUT("/categories/:id", categoryController.UpdateCategory)
+		// superAdminGroup.DELETE("/categories/:id", categoryController.DeleteCategory)
+	}
+
 	// ==== VENDOR ROUTES ====
 	vendorRoutes := r.Group("/vendors")
 	vendorRoutes.Use(middlewares.AuthMiddleware(db))
