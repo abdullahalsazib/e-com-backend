@@ -26,7 +26,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 
 	// ==== CONTROLLERS ====
 	authController := controllers.NewAuthController(db)
-	// superAdminController := controllers.NewSuperAdminController(db)
+	superAdminController := controllers.NewSuperAdminController(db)
 	productController := controllers.NewProductController(db)
 	cartController := controllers.NewCartController(db)
 	orderController := controllers.NewOrderController(db)
@@ -101,6 +101,14 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		cartGroup.PUT("/items/:itemId", cartController.UpdateCartItem)
 		cartGroup.DELETE("/items/:itemId", cartController.RemoveFromCart)
 		cartGroup.DELETE("/clear", cartController.ClearCart)
+	}
+	// ==== SUPER ADMIN ROUTES ====
+
+	superAdmin := r.Group("/super-admin")
+	superAdmin.Use(middlewares.AuthMiddleware(db), middlewares.SuperAdminMiddleware(db))
+	{
+		superAdmin.GET("/users", superAdminController.ListUsers)
+		superAdmin.DELETE("/users/:id", superAdminController.DeleteUserByID)
 	}
 
 	// ==== VENDOR ROUTES ====
