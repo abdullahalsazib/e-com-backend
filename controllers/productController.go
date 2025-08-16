@@ -13,255 +13,232 @@ type ProductController struct {
 	DB *gorm.DB
 }
 
-func NewProductController(DB *gorm.DB) ProductController {
-	return ProductController{DB}
+func NewProductController(db *gorm.DB) *ProductController {
+	return &ProductController{DB: db}
 }
 
-// Create Product - POST
+// Get All Products
+func (pc *ProductController) GetProducts(c *gin.Context) {
+	var products []models.Product
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").Preload("User.Roles").
+		Preload("Vendor").Preload("Vendor.User").
+		// Preload("Vendor.ApprovedByUser"). // optional
+		Find(&products).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, products)
+}
+
+// Get Single Product
+func (pc *ProductController) GetProduct(c *gin.Context) {
+	id := c.Param("id")
+	var product models.Product
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").Preload("User.Roles").
+		Preload("Vendor").Preload("Vendor.User").
+		// Preload("Vendor.ApprovedByUser"). // optional
+		First(&product, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, product)
+}
+
+// CreateProduct creates a new product
 func (pc *ProductController) CreateProduct(c *gin.Context) {
-	userId, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Convert userId to uint
-	var userIDUint uint
-	if id, ok := userId.(uint); ok {
-		userIDUint = id
-	} else if idf, ok := userId.(float64); ok {
-		userIDUint = uint(idf)
-	} else {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	// Parse JSON
 	var payload struct {
-		Name        string  `json:"product_name"  binding:"required"`
-		Description string  `json:"description" binding:"required"`
+		CategoryID  uint    `json:"category_id" binding:"required"` // Category FK
+		Name        string  `json:"name" binding:"required"`
+		Description string  `json:"description"`
 		Price       float64 `json:"price" binding:"required"`
-		Stock       int     `json:"stock" binding:"required"`
-		ImageURL    string  `json:"image_url" binding:"required"`
-		CategoryID  uint    `json:"category_id" binding:"required"`
+		Stock       int     `json:"stock"`
+		ImageURL    string  `json:"image_url"`
+		Status      string  `json:"status"` // draft, published, private, archived
 	}
 
+	// Bind JSON payload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Check if category exists
-	var category models.Category
-	if err := pc.DB.First(&category, payload.CategoryID).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category ID"})
+	// Get user ID from context (set by AuthMiddleware)
+	userIDInterface, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID := userIDInterface.(uint)
+
+	// Get Vendor record for this user
+	var vendor models.Vendor
+	if err := pc.DB.Where("user_id = ?", userID).First(&vendor).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Vendor not found for this user"})
 		return
 	}
 
-	// Create product
-	newProduct := models.Product{
+	// Create Product instance
+	product := models.Product{
+		UserID:      userID,
+		VendorID:    vendor.ID,
+		CategoryID:  payload.CategoryID,
 		Name:        payload.Name,
 		Description: payload.Description,
 		Price:       payload.Price,
 		Stock:       payload.Stock,
 		ImageURL:    payload.ImageURL,
-		CategoryID:  payload.CategoryID,
-		UserID:      userIDUint,
-		Status:      "pending", // Default status
+		Status:      payload.Status,
 	}
 
-	if err := pc.DB.Create(&newProduct).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create product"})
+	// Save to DB
+	if err := pc.DB.Create(&product).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Product created successfully"})
-}
-
-func (pc *ProductController) GetProducts(c *gin.Context) {
-	var products []models.Product
-	result := pc.DB.Find(&products)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+	// Preload related fields for response
+	if err := pc.DB.Preload("Category").Preload("User").Preload("Vendor").First(&product, product.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load created product"})
 		return
 	}
-	c.JSON(http.StatusOK, products)
+
+	c.JSON(http.StatusCreated, product)
 }
 
-// get product by id
-func (pc *ProductController) GetProduct(c *gin.Context) {
-	produtId := c.Param("id")
-
-	var product models.Product
-	result := pc.DB.First(&product, "ID = ?", produtId)
-	if result.Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": product})
-}
-
+// UpdateProduct updates a product's details
 func (pc *ProductController) UpdateProduct(c *gin.Context) {
-	productIdStr := c.Param("id")
-	productId, err := strconv.ParseUint(productIdStr, 10, 64)
+	// 1. Parse product ID
+	id := c.Param("id")
+	productID, err := strconv.Atoi(id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid product ID"})
 		return
 	}
 
-	userId, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	var userIDUint uint
-	switch v := userId.(type) {
-	case uint:
-		userIDUint = v
-	case float64:
-		userIDUint = uint(v)
-	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	var payload struct {
-		Name        string  `json:"product_name" binding:"required"`
-		Description string  `json:"description" binding:"required"`
-		Price       float64 `json:"price" binding:"required"`
-		Stock       int     `json:"stock" binding:"required"`
-		ImageURL    string  `json:"image_url" binding:"required"`
-		CategoryID  uint    `json:"category_id" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var updatedProduct models.Product
-
-	result := pc.DB.First(&updatedProduct, productId)
-	if result.Error != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
-		return
-	}
-
-	if updatedProduct.UserID != userIDUint {
-		c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own products"})
-		return
-	}
-
-	updatedProduct.Name = payload.Name
-	updatedProduct.Description = payload.Description
-	updatedProduct.Price = payload.Price
-	updatedProduct.Stock = payload.Stock
-	updatedProduct.ImageURL = payload.ImageURL
-	updatedProduct.CategoryID = payload.CategoryID
-
-	if err := pc.DB.Save(&updatedProduct).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update product"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Product updated successfully", "data": updatedProduct})
-}
-
-func (pc *ProductController) DeleteProduct(c *gin.Context) {
-	id := c.Param("id")
-	productId, err := strconv.Atoi(id)
-	userID := c.GetUint("user_id")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid product id"})
-		return
-	}
-
-	var product models.Product
-	if err := pc.DB.First(&product, productId).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
-			return
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error finding product"})
-		}
-		return
-	}
-
-	if product.UserID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own products"})
-		return
-	}
-
-	if err := pc.DB.Unscoped().Delete(&product).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error Delete Product"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Product delete succesfully"})
-}
-
-func hasRole(user models.User, role string) bool {
-	for _, r := range user.Roles {
-		if r.Slug == role {
-			return true
-		}
-	}
-	return false
-}
-
-func (pc *ProductController) UpdateProductStatus(c *gin.Context) {
-	productID := c.Param("id")
-
-	var req struct {
-		Status string `json:"status"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-
-	validStatus := map[string]bool{
-		"published": true,
-		"private":   true,
-		"pending":   true,
-	}
-	if !validStatus[req.Status] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status"})
-		return
-	}
-
-	// JWT theke current user
-	u, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	currentUser := u.(models.User)
-
+	// 2. Fetch product from DB
 	var product models.Product
 	if err := pc.DB.First(&product, productID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 		return
 	}
 
-	// jodi admin/superadmin hoie, tahole je kono product update korte parbe
-	if hasRole(currentUser, "admin") || hasRole(currentUser, "superadmin") {
-		// ok
-	} else {
-		// Vendor hole sudho nejer product update korte parbe
-		if product.UserID != currentUser.ID {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own products"})
-			return
-		}
+	// 3. Bind JSON payload
+	var payload struct {
+		Name        string  `json:"name" binding:"required"`
+		Description string  `json:"description"`
+		Price       float64 `json:"price" binding:"required"`
+		Stock       int     `json:"stock" binding:"required"`
+		ImageURL    string  `json:"image_url"`
+		CategoryID  uint    `json:"category_id" binding:"required"`
+		Status      string  `json:"status"` // optional: draft, published, private, archived
 	}
-
-	// Update status
-	product.Status = req.Status
-	if err := pc.DB.Save(&product).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update status"})
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Product status updated", "product": product})
+	// 4. Optional: validate status if provided
+	if payload.Status != "" {
+		validStatuses := map[string]bool{"draft": true, "published": true, "private": true, "archived": true}
+		if !validStatuses[payload.Status] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status value"})
+			return
+		}
+		product.Status = payload.Status
+	}
+
+	// 5. Update allowed fields
+	product.Name = payload.Name
+	product.Description = payload.Description
+	product.Price = payload.Price
+	product.Stock = payload.Stock
+	product.ImageURL = payload.ImageURL
+	product.CategoryID = payload.CategoryID
+
+	if err := pc.DB.Save(&product).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 6. Preload relations for response
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").Preload("User.Roles").
+		Preload("Vendor").Preload("Vendor.User").
+		First(&product, productID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, product)
+}
+
+// Delete Product
+func (pc *ProductController) DeleteProduct(c *gin.Context) {
+	id := c.Param("id")
+	if err := pc.DB.Delete(&models.Product{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Product deleted successfully"})
+}
+
+// Update Product Status
+func (pc *ProductController) UpdateStatus(c *gin.Context) {
+
+	// --- 1. Get and validate product ID ---
+	id := c.Param("id")
+	productID, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid product ID"})
+		return
+	}
+
+	// --- 2. Fetch product from DB ---
+	var product models.Product
+	if err := pc.DB.First(&product, productID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+		return
+	}
+
+	// --- 3. Bind JSON payload ---
+	var req struct {
+		Status string `json:"status" binding:"required"` // draft, published, private, archived
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// --- 4. Validate allowed status ---
+	validStatuses := map[string]bool{"draft": true, "published": true, "private": true, "archived": true}
+	if !validStatuses[req.Status] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status value"})
+		return
+	}
+
+	// --- 6. Update product status ---
+	product.Status = req.Status
+	if err := pc.DB.Save(&product).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").Preload("User.Roles").
+		Preload("Vendor").Preload("Vendor.User").
+		// Preload("Vendor.ApprovedByUser"). // optional
+		First(&product, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, product)
 }

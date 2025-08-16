@@ -62,6 +62,9 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 			protectedProduct.POST("/", productController.CreateProduct)
 			protectedProduct.PUT("/:id", productController.UpdateProduct)
 			protectedProduct.DELETE("/:id", productController.DeleteProduct)
+
+			// dedicated endpoint for status update
+			protectedProduct.PATCH("/:id/status", productController.UpdateStatus)
 		}
 	}
 
