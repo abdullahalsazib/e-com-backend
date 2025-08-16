@@ -17,15 +17,36 @@ func NewProductController(db *gorm.DB) *ProductController {
 	return &ProductController{DB: db}
 }
 
-// Get All Products
+// GetProducts - filtered response based on role
 func (pc *ProductController) GetProducts(c *gin.Context) {
 	var products []models.Product
-	if err := pc.DB.
-		Preload("Category").
-		Preload("User").Preload("User.Roles").
-		Preload("Vendor").Preload("Vendor.User").
-		// Preload("Vendor.ApprovedByUser"). // optional
-		Find(&products).Error; err != nil {
+
+	// check if user is authenticated
+	user, exists := c.Get("user_id") // assume user set in middleware
+	query := pc.DB.Preload("User").Preload("Vendor").Preload("Category")
+
+	if !exists {
+		// unauthenticated → only published
+		query = query.Where("status = ?", "published")
+	} else {
+		// type assert
+		u := user.(models.User)
+		hasAdminRole := false
+		for _, role := range u.Roles {
+			if role.Slug == "admin" || role.Slug == "superadmin" {
+				hasAdminRole = true
+				break
+			}
+		}
+
+		if !hasAdminRole {
+			// normal authenticated user → only published
+			query = query.Where("status = ?", "published")
+		}
+		// if admin/superadmin → no filter, get all
+	}
+
+	if err := query.Find(&products).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

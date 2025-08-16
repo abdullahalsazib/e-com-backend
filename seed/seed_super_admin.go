@@ -3,6 +3,7 @@ package seed
 import (
 	"errors"
 	"log"
+	"os"
 	"time"
 
 	"github.com/abdullahalsazib/e-com-backend/models"
@@ -23,7 +24,6 @@ func SeedSuperAdmin(db *gorm.DB) {
 		}
 	}
 
-	// ১. প্রথমে Super Admin role তৈরি/নিশ্চিত করো
 	role := models.Role{}
 	if err := db.Where("slug = ?", "superadmin").First(&role).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -42,10 +42,15 @@ func SeedSuperAdmin(db *gorm.DB) {
 		log.Println("Super Admin role already exists")
 	}
 
-	// ২. তারপর একটা Super Admin user তৈরি করো (email/password)
 	var user models.User
-	email := "super@admin.com" // production এ environment variable ব্যবহার করো
-	password := "super123"     // production এ environment variable ব্যবহার করো
+	email := os.Getenv("SUPER_USER_EMAIL")
+	password := os.Getenv("SUPER_USER_PASSWORD")
+	if email == "" {
+		log.Fatal("SUPER_USER_EMAIL is not found")
+	}
+	if password == "" {
+		log.Fatal("SUPER_USER_PASSWORD is not found")
+	}
 
 	err := db.Where("email = ?", email).First(&user).Error
 	if err == gorm.ErrRecordNotFound {
@@ -63,8 +68,6 @@ func SeedSuperAdmin(db *gorm.DB) {
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			},
-			// CreatedAt: time.Now(),
-			// UpdatedAt: time.Now(),
 		}
 		if err := db.Create(&user).Error; err != nil {
 			log.Fatalf("Failed to create super admin user: %v", err)
@@ -76,7 +79,6 @@ func SeedSuperAdmin(db *gorm.DB) {
 		log.Println("Super Admin user already exists")
 	}
 
-	// ৩. User কে Super Admin Role assign করো
 	var userRole models.UserRole
 	err = db.Where("user_id = ? AND role_id = ?", user.ID, role.ID).First(&userRole).Error
 	if err == gorm.ErrRecordNotFound {

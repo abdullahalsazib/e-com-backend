@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"os"
 	"time"
 
 	"github.com/abdullahalsazib/e-com-backend/controllers"
@@ -13,9 +14,10 @@ import (
 func SetupRoutes(db *gorm.DB) *gin.Engine {
 	r := gin.Default()
 
-	// ==== CORS CONFIG ====
+	origin := os.Getenv("ALLOW_ORIGINS")
+	//  CORS CONFIG
 	corsConfig := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{origin},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -24,7 +26,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	}
 	r.Use(cors.New(corsConfig))
 
-	// ==== CONTROLLERS ====
+	//  CONTROLLERS
 	authController := controllers.NewAuthController(db)
 	superAdminController := controllers.NewSuperAdminController(db)
 	productController := controllers.NewProductController(db)
@@ -34,21 +36,21 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	wishlistController := controllers.NewWishlistController(db)
 	vendorController := controllers.NewVendorController(db, &authController)
 
-	// ==== PUBLIC ROUTES ====
+	//  PUBLIC ROUTES
 	r.POST("/register", authController.Register)
 	r.POST("/login", authController.Login)
 	r.POST("/refresh", authController.RefreshToken)
 	r.POST("/logout", authController.Logout)
 	r.GET("/categorys", categoryController.GetCategories)
 
-	// ==== AUTH GROUP ====
+	//  AUTH GROUP
 	authGroup := r.Group("/auth")
 	authGroup.Use(middlewares.AuthMiddleware(db))
 	{
 		authGroup.GET("/me", authController.GetProfile)
 	}
 
-	// ==== PRODUCT ROUTES ====
+	//  PRODUCT ROUTES
 	productGroup := r.Group("/api/v1/products")
 	{
 		// public
@@ -68,7 +70,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		}
 	}
 
-	// ==== ORDER ROUTES ====
+	//  ORDER ROUTES
 	order := authGroup.Group("/orders")
 	{
 		order.POST("/", orderController.CreateOrder)
@@ -84,7 +86,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		}
 	}
 
-	// ==== WISHLIST ROUTES ====
+	//  WISHLIST ROUTES
 	wishlistGroup := authGroup.Group("/wishlist")
 	{
 		wishlistGroup.POST("/add", wishlistController.AddToWishlist)
@@ -95,7 +97,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		wishlistGroup.POST("/import", wishlistController.ImportWishlist)
 	}
 
-	// ==== CART ROUTES ====
+	//  CART ROUTES
 	cartGroup := authGroup.Group("/cart")
 	{
 		cartGroup.GET("/", cartController.GetCart)
@@ -105,37 +107,39 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		cartGroup.DELETE("/clear", cartController.ClearCart)
 	}
 
-	// ==== PRODUCT CATEGORY ROUTES ====
+	//  PRODUCT CATEGORY ROUTES
 	categoryRoutes := r.Group("/categories")
 	{
 		categoryRoutes.GET("/", categoryController.GetCategories)
 		categoryRoutes.GET("/:id", categoryController.GetCategories)
 	}
 
-	// ==== SUPERADMIN  MANAGEMENT ====
+	//  SUPERADMIN  MANAGEMENT
 	superAdminGroup := r.Group("/super-admin")
 	superAdminGroup.Use(middlewares.AuthMiddleware(db), middlewares.SuperAdminMiddleware(db))
 	{
 		superAdminGroup.GET("/users", superAdminController.ListUsers)
 		superAdminGroup.DELETE("/users/:id", superAdminController.DeleteUserByID)
-		// superAdminGroup.GET("/users/:id", authController.GetUser)
-		// superAdminGroup.PUT("/users/:id/role", authController.UpdateUserRole)
-		// superAdminGroup.DELETE("/users/:id", authController.DeleteUser)
+		// user related
+		superAdminGroup.GET("/users/:id", authController.GetUser)
+		superAdminGroup.PUT("/users/:id/role", authController.UpdateUserRole)
+		// superAdminGroup.DELETE("/users/:id", authController.DeleteUser) // hard delete
 
-		// superAdminGroup.GET("/categories", categoryController.ListCategories)
-		// superAdminGroup.POST("/categories", categoryController.CreateCategory)
-		// superAdminGroup.PUT("/categories/:id", categoryController.UpdateCategory)
-		// superAdminGroup.DELETE("/categories/:id", categoryController.DeleteCategory)
+		superAdminGroup.GET("/categories", categoryController.ListCategories)
+		superAdminGroup.POST("/categories", categoryController.CreateCategory)
+		superAdminGroup.PUT("/categories/:id", categoryController.UpdateCategory)
+		superAdminGroup.DELETE("/categories/:id", categoryController.DeleteCategory)
+
 	}
 
-	// ==== VENDOR ROUTES ====
+	//  VENDOR ROUTES
 	vendorRoutes := r.Group("/vendors")
 	vendorRoutes.Use(middlewares.AuthMiddleware(db))
 	{
 		vendorRoutes.POST("/apply", vendorController.VendorApply) // user apply
 	}
 
-	// ==== SUPERADMIN VENDOR MANAGEMENT ====
+	//  SUPERADMIN VENDOR MANAGEMENT
 	superAdminVendor := r.Group("/super-admin/vendors")
 	superAdminVendor.Use(middlewares.AuthMiddleware(db), middlewares.SuperAdminMiddleware(db))
 	{
