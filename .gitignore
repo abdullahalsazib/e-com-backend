@@ -11,7 +11,6 @@
 /bin/
 /obj/
 /build/
-/tmp/
 
 # Vendor directory (if using vendoring)
 vendor/
@@ -24,13 +23,16 @@ go.work.sum
 Godeps/
 _glide/
 
+# Air temp/cache files
+.air/
+
 # IDE/editor files
 *.swp
 *.swo
 *.idea/
 *.vscode/
 *.DS_Store
-*.air.toml
+
 # Logs and temp files
 *.log
 *.tmp
