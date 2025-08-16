@@ -195,8 +195,11 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 			"vendor": func() interface{} {
 				if user.Vendor != nil {
 					return gin.H{
+						"vendor_id":     user.Vendor.ID,
+						"user_id":       user.Vendor.UserID,
 						"vendor_name":   user.Vendor.ShopName,
 						"vendor_status": user.Vendor.Status,
+						"approved_by":   user.Vendor.ApprovedBy,
 					}
 				}
 				return nil

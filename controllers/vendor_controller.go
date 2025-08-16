@@ -52,6 +52,10 @@ func (vc *VendorController) VendorApply(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not submit vendor application"})
 		return
 	}
+	if err := vc.DB.Preload("User").First(&vendor, vendor.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to preload user"})
+		return
+	}
 
 	// Audit log
 	audit := models.AuditLog{
@@ -84,6 +88,7 @@ func (vc *VendorController) ListVendors(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get vendors"})
 		return
 	}
+	
 
 	c.JSON(http.StatusOK, vendors)
 }
