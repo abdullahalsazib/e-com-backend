@@ -1,4 +1,4 @@
-# Binaries for programs and plugins
+# Binaries
 *.exe
 *.exe~
 *.dll
@@ -7,38 +7,19 @@
 *.test
 *.out
 
-# Build directories
+# Go build
 /bin/
-/obj/
+/tmp/
+/dist/
 /build/
 
-# Vendor directory (if using vendoring)
-vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# Dependency directories (remove if using Go modules)
-Godeps/
-_glide/
-
-# Air temp/cache files
-.air/
-
-# IDE/editor files
-*.swp
-*.swo
-*.idea/
-*.vscode/
-*.DS_Store
-
-# Logs and temp files
+# Go workspace
 *.log
-*.tmp
 
-# Environment files
+# IDE
+.vscode/
+.idea/
+
+# Environment & Config
 .env
-
-# Coverage files
-coverage.out
+.air.toml
