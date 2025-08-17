@@ -17,60 +17,6 @@ func NewProductController(db *gorm.DB) *ProductController {
 	return &ProductController{DB: db}
 }
 
-// GetProducts - filtered response based on role
-func (pc *ProductController) GetProducts(c *gin.Context) {
-	var products []models.Product
-
-	// check if user is authenticated
-	user, exists := c.Get("user_id") // assume user set in middleware
-	query := pc.DB.Preload("User").Preload("Vendor").Preload("Category")
-
-	if !exists {
-		// unauthenticated → only published
-		query = query.Where("status = ?", "published")
-	} else {
-		// type assert
-		u := user.(models.User)
-		hasAdminRole := false
-		for _, role := range u.Roles {
-			if role.Slug == "admin" || role.Slug == "superadmin" {
-				hasAdminRole = true
-				break
-			}
-		}
-
-		if !hasAdminRole {
-			// normal authenticated user → only published
-			query = query.Where("status = ?", "published")
-		}
-		// if admin/superadmin → no filter, get all
-	}
-
-	if err := query.Find(&products).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, products)
-}
-
-// Get Single Product
-func (pc *ProductController) GetProduct(c *gin.Context) {
-	id := c.Param("id")
-	var product models.Product
-	if err := pc.DB.
-		Preload("Category").
-		Preload("User").Preload("User.Roles").
-		Preload("Vendor").Preload("Vendor.User").
-		// Preload("Vendor.ApprovedByUser"). // optional
-		First(&product, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, product)
-}
-
 // CreateProduct creates a new product
 func (pc *ProductController) CreateProduct(c *gin.Context) {
 	var payload struct {
@@ -213,7 +159,7 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 // Update Product Status
 func (pc *ProductController) UpdateStatus(c *gin.Context) {
 
-	// --- 1. Get and validate product ID ---
+	//  1. Get and validate product ID
 	id := c.Param("id")
 	productID, err := strconv.Atoi(id)
 	if err != nil {
@@ -221,14 +167,14 @@ func (pc *ProductController) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	// --- 2. Fetch product from DB ---
+	//  2. Fetch product from DB
 	var product models.Product
 	if err := pc.DB.First(&product, productID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 		return
 	}
 
-	// --- 3. Bind JSON payload ---
+	//  3. Bind JSON payload
 	var req struct {
 		Status string `json:"status" binding:"required"` // draft, published, private, archived
 	}
@@ -237,14 +183,14 @@ func (pc *ProductController) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	// --- 4. Validate allowed status ---
+	//  4. Validate allowed status
 	validStatuses := map[string]bool{"draft": true, "published": true, "private": true, "archived": true}
 	if !validStatuses[req.Status] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status value"})
 		return
 	}
 
-	// --- 6. Update product status ---
+	//  6. Update product status
 	product.Status = req.Status
 	if err := pc.DB.Save(&product).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -258,6 +204,164 @@ func (pc *ProductController) UpdateStatus(c *gin.Context) {
 		// Preload("Vendor.ApprovedByUser"). // optional
 		First(&product, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, product)
+}
+
+// Customer
+func (pc *ProductController) GetProductsCustomer(c *gin.Context) {
+	var products []models.Product
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").
+		Preload("Vendor").
+		Where("status = ?", "published").
+		Find(&products).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch products"})
+		return
+	}
+
+	c.JSON(http.StatusOK, products)
+}
+
+// Vendor
+func (pc *ProductController) GetProductsVendor(c *gin.Context) {
+	rolesVal, ok := c.Get("role")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "roles not found in context"})
+		return
+	}
+
+	userIDVal, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in context"})
+		return
+	}
+
+	userID := userIDVal.(uint)
+	roleList := rolesVal.([]string)
+
+	isAdmin := false
+	for _, r := range roleList {
+		if r == "admin" {
+			isAdmin = true
+			break
+		}
+	}
+
+	if !isAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only admins can access vendor products"})
+		return
+	}
+
+	var products []models.Product
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").
+		Preload("Vendor").
+		Where("user_id = ?", userID).
+		Find(&products).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch products"})
+		return
+	}
+
+	c.JSON(http.StatusOK, products)
+}
+
+// Superadmin
+func (pc *ProductController) GetProductsSuperadmin(c *gin.Context) {
+	var products []models.Product
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").
+		Preload("Vendor").
+		Where("status != ?", "draft").
+		Find(&products).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch products"})
+		return
+	}
+
+	c.JSON(http.StatusOK, products)
+}
+
+// Customer
+func (pc *ProductController) GetProductByIDCustomer(c *gin.Context) {
+	id := c.Param("id")
+	var product models.Product
+
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").
+		Preload("Vendor").
+		Where("id = ? AND status = ?", id, "published").
+		First(&product).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "product not found or not published"})
+		return
+	}
+
+	c.JSON(http.StatusOK, product)
+}
+
+// Vendor/Admin
+func (pc *ProductController) GetProductByIDVendor(c *gin.Context) {
+	id := c.Param("id")
+
+	rolesVal, ok := c.Get("role")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "roles not found in context"})
+		return
+	}
+
+	userIDVal, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in context"})
+		return
+	}
+	userID := userIDVal.(uint)
+	roleList := rolesVal.([]string)
+
+	// check admin role
+	isAdmin := false
+	for _, r := range roleList {
+		if r == "admin" {
+			isAdmin = true
+			break
+		}
+	}
+
+	if !isAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only admins can access vendor products"})
+		return
+	}
+
+	var product models.Product
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").
+		Preload("Vendor").
+		Where("id = ? AND user_id = ?", id, userID).
+		First(&product).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "product not found or unauthorized"})
+		return
+	}
+
+	c.JSON(http.StatusOK, product)
+}
+
+// Superadmin
+func (pc *ProductController) GetProductByIDSuperadmin(c *gin.Context) {
+	id := c.Param("id")
+	var product models.Product
+
+	if err := pc.DB.
+		Preload("Category").
+		Preload("User").
+		Preload("Vendor").
+		Where("id = ? AND status != ?", id, "draft").
+		First(&product).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "product not found or draft"})
 		return
 	}
 

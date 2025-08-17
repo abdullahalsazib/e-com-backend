@@ -53,20 +53,33 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	//  PRODUCT ROUTES
 	productGroup := r.Group("/api/v1/products")
 	{
-		// public
-		productGroup.GET("", productController.GetProducts)
-		productGroup.GET("/:id", productController.GetProduct)
-
-		// protected (admin or seller)
-		protectedProduct := productGroup.Group("")
-		protectedProduct.Use(middlewares.AuthMiddleware(db), middlewares.AdminSellerMiddleware())
+		// public's - customer's
+		customerPruduct := productGroup.Group("/customer")
 		{
-			protectedProduct.POST("/", productController.CreateProduct)
-			protectedProduct.PUT("/:id", productController.UpdateProduct)
-			protectedProduct.DELETE("/:id", productController.DeleteProduct)
+			customerPruduct.GET("", productController.GetProductsCustomer)
+			customerPruduct.GET("/:id", productController.GetProductByIDCustomer)
+		}
 
-			// dedicated endpoint for status update
-			protectedProduct.PATCH("/:id/status", productController.UpdateStatus)
+		// protected (admin or seller or vendor)
+		vendorProduct := productGroup.Group("/vendor")
+		vendorProduct.Use(middlewares.AuthMiddleware(db), middlewares.AdminSellerMiddleware())
+		{
+
+			vendorProduct.GET("", productController.GetProductsVendor)
+			vendorProduct.GET("/:id", productController.GetProductByIDVendor)
+			vendorProduct.POST("", productController.CreateProduct)
+			vendorProduct.PUT("/:id", productController.UpdateProduct)
+			vendorProduct.DELETE("/:id", productController.DeleteProduct)
+
+			// status update
+			vendorProduct.PATCH("/:id/status", productController.UpdateStatus)
+		}
+
+		// superadmin can view all product (all without draft)
+		superadminProduct := productGroup.Group("/superadmin")
+		{
+			superadminProduct.GET("", productController.GetProductsSuperadmin)
+			superadminProduct.GET("/:id", productController.GetProductByIDSuperadmin)
 		}
 	}
 
@@ -137,6 +150,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 	vendorRoutes.Use(middlewares.AuthMiddleware(db))
 	{
 		vendorRoutes.POST("/apply", vendorController.VendorApply) // user apply
+		// apply for delete vendor account
 	}
 
 	//  SUPERADMIN VENDOR MANAGEMENT
@@ -152,3 +166,9 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 
 	return r
 }
+
+// products - who can see
+
+// user/customer -> /api/v1/products -> getProducts_user
+// vendor/admin -> /auth/v1/products -> getProducts_admin
+// superadmin -> /superadmin/v1/products -> getPrducts_superadmin
