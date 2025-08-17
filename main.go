@@ -11,6 +11,10 @@ import (
 )
 
 func main() {
+
+	// if production then use this releaseMode
+	// gin.SetMode(gin.ReleaseMode)
+
 	// load .env file
 	err := godotenv.Load()
 	if err != nil {
