@@ -16,6 +16,7 @@ type Role struct {
 }
 
 // models/permission.go
+
 type Permission struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	Name      string         `gorm:"size:150;uniqueIndex;not null" json:"name"`
@@ -26,6 +27,7 @@ type Permission struct {
 }
 
 // models/role_permission.go
+
 type RolePermission struct {
 	RoleID       uint `gorm:"primaryKey"`
 	PermissionID uint `gorm:"primaryKey"`

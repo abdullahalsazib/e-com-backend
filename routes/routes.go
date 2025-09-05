@@ -147,6 +147,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 
 	//  VENDOR ROUTES
 	vendorRoutes := r.Group("/vendors")
+	vendorRoutes.GET("/:id", vendorController.GetVendor)
 	vendorRoutes.Use(middlewares.AuthMiddleware(db))
 	{
 		vendorRoutes.POST("/apply", vendorController.VendorApply) // user apply
