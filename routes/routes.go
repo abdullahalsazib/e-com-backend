@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"os"
 	"time"
 
 	"github.com/abdullahalsazib/e-com-backend/controllers"
