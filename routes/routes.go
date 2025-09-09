@@ -14,10 +14,10 @@ import (
 func SetupRoutes(db *gorm.DB) *gin.Engine {
 	r := gin.Default()
 
-	origin := os.Getenv("ALLOW_ORIGINS")
+	// origin := os.Getenv("ALLOW_ORIGINS")
 	//  CORS CONFIG
 	corsConfig := cors.Config{
-		AllowOrigins:     []string{origin},
+		AllowOrigins:     []string{"https://e-com-nextjs-six.vercel.app"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
