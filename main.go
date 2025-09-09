@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/abdullahalsazib/e-com-backend/config"
 	"github.com/abdullahalsazib/e-com-backend/models"
@@ -11,7 +12,6 @@ import (
 )
 
 func main() {
-
 	// if production then use this releaseMode
 	// gin.SetMode(gin.ReleaseMode)
 
@@ -53,5 +53,7 @@ func main() {
 	// setup models
 	r := routes.SetupRoutes(db)
 
-	r.Run(":8080")
+	port := os.Getenv("PORT")
+
+	r.Run(port)
 }

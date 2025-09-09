@@ -72,7 +72,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 			vendorProduct.DELETE("/:id", productController.DeleteProduct)
 
 			// status update
-			vendorProduct.PATCH("/:id/status", productController.UpdateStatus)
+			vendorProduct.PUT("/:id/status", productController.UpdateStatus)
 		}
 
 		// superadmin can view all product (all without draft)
@@ -147,6 +147,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 
 	//  VENDOR ROUTES
 	vendorRoutes := r.Group("/vendors")
+	vendorRoutes.GET("/:id", vendorController.GetVendor)
 	vendorRoutes.Use(middlewares.AuthMiddleware(db))
 	{
 		vendorRoutes.POST("/apply", vendorController.VendorApply) // user apply

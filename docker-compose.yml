@@ -1,4 +1,4 @@
-version: "3.8"
+# version: "3.8"
 
 services:
   postgres:
@@ -14,17 +14,18 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@localhost.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
+      # pgadmin is an ui for visual postgres database view; -> (optonal)
+      # pgadmin:
+      #   image: dpage/pgadmin4
+      #   container_name: pgadmin
+      #   restart: unless-stopped
+      #   environment:
+      #     PGADMIN_DEFAULT_EMAIL: admin@localhost.com
+      #     PGADMIN_DEFAULT_PASSWORD: admin123
+      #   ports:
+      #     - "5050:80"
+      #   depends_on:
+      #     - postgres
 
 volumes:
   pgdata:

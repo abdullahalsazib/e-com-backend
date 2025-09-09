@@ -17,6 +17,7 @@ func NewCategoryController(DB *gorm.DB) CategoryController {
 }
 
 // GET /categories
+
 func (cc *CategoryController) GetCategories(c *gin.Context) {
 	var categories []models.Category
 	// var categories models.Category

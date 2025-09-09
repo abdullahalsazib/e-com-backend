@@ -208,7 +208,6 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 			"updatedAt": user.UpdatedAt,
 		},
 	})
-
 }
 
 // refresh
