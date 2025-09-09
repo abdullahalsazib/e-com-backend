@@ -72,7 +72,7 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 			vendorProduct.DELETE("/:id", productController.DeleteProduct)
 
 			// status update
-			vendorProduct.PATCH("/:id/status", productController.UpdateStatus)
+			vendorProduct.PUT("/:id/status", productController.UpdateStatus)
 		}
 
 		// superadmin can view all product (all without draft)
