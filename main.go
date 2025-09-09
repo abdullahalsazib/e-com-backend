@@ -8,12 +8,14 @@ import (
 	"github.com/abdullahalsazib/e-com-backend/models"
 	"github.com/abdullahalsazib/e-com-backend/routes"
 	"github.com/abdullahalsazib/e-com-backend/seed"
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 func main() {
 	// if production then use this releaseMode
-	// gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(gin.ReleaseMode)
+
 
 	// load .env file
 	err := godotenv.Load()
