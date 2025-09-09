@@ -53,7 +53,17 @@ func main() {
 	// setup models
 	r := routes.SetupRoutes(db)
 
+	// port := os.Getenv("PORT")
 	port := os.Getenv("PORT")
+	if port == "" {
+		port = "10000"
+	}
 
-	r.Run(port)
+	// Start server
+	err = r.Run(":" + port)
+	if err != nil {
+		log.Fatal("Server failed to start:", err)
+	}
+
+	// r.Run(port)
 }
